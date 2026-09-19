@@ -1,0 +1,11 @@
+name: Terraform Plan
+
+on:
+  workflow_dispatch:
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "Add Terraform plan steps for this environment."
