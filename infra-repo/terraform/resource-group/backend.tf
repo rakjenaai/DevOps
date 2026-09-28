@@ -16,4 +16,7 @@ terraform {
     key                  = "resource-group.tfstate"
     use_azuread_auth     = true
   }
+
 }
+
+#
