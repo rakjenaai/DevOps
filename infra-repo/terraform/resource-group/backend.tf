@@ -10,7 +10,7 @@ terraform {
   }
 
   backend "azurerm" {
-    resource_group_name  = "rg-dev1-platform"
+    resource_group_name  = "rg-dev-platform"
     storage_account_name = "rkjstorage"
     container_name       = "tfstate"
     key                  = "resource-group.tfstate"
