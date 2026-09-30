@@ -1,24 +1,52 @@
 name: Terraform PLAN
 
 on:
+
+  # Run PLAN when a Pull Request changes Terraform code
   pull_request:
     paths:
       - "infra-repo/terraform/resource-group/**"
 
+  # Run PLAN when Terraform code is pushed directly to main
+  push:
+    branches:
+      - main
+    paths:
+      - "infra-repo/terraform/resource-group/**"
+
+  # Allow manual execution from GitHub Actions
+  workflow_dispatch:
+
+
+# Permissions required for GitHub OIDC authentication
 permissions:
   id-token: write
   contents: read
 
+
+# Azure authentication configuration
 env:
   ARM_USE_OIDC: true
   ARM_USE_AZUREAD: true
   ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
   ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
+
+# Cancel an older PLAN if a newer commit is pushed
+concurrency:
+  group: terraform-plan-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+
 jobs:
 
+  # ============================================================
+  # JOB 1: Detect which Terraform components have changed
+  # ============================================================
   detect-components:
+
     name: Detect Terraform Components
+
     runs-on: ubuntu-latest
 
     outputs:
@@ -26,112 +54,325 @@ jobs:
 
     steps:
 
+      # Checkout complete Git history so git diff can be performed
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+
+      # Detect changed Terraform components
       - name: Detect changed Terraform components
         id: detect
         shell: bash
+
         run: |
+
           set -euo pipefail
 
-          BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          echo "GitHub event: ${{ github.event_name }}"
 
-          echo "Base SHA: $BASE_SHA"
-          echo "Head SHA: $HEAD_SHA"
+          # ------------------------------------------------------
+          # Pull Request
+          # Compare PR base commit with PR head commit
+          # ------------------------------------------------------
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
 
-          changed_files=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
 
+            echo "Base SHA: $BASE_SHA"
+            echo "Head SHA: $HEAD_SHA"
+
+            changed_files=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+
+
+          # ------------------------------------------------------
+          # Push to main
+          # Compare previous commit with current commit
+          # ------------------------------------------------------
+          elif [[ "${{ github.event_name }}" == "push" ]]; then
+
+            BASE_SHA="${{ github.event.before }}"
+            HEAD_SHA="${{ github.sha }}"
+
+            echo "Previous SHA: $BASE_SHA"
+            echo "Current SHA: $HEAD_SHA"
+
+            # Handle first commit on a branch
+            if [[ "$BASE_SHA" =~ ^0+$ ]]; then
+
+              echo "No previous commit available."
+              echo "Planning all Terraform components."
+
+              changed_files=$(
+                find infra-repo/terraform/resource-group \
+                  -type f \
+                  \( -name "*.tf" -o -name "*.tfvars" \)
+              )
+
+            else
+
+              changed_files=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+
+            fi
+
+
+          # ------------------------------------------------------
+          # Manual workflow execution
+          # Plan all Terraform components
+          # ------------------------------------------------------
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+
+            echo "Manual workflow execution."
+            echo "Planning all Terraform components."
+
+            changed_files=$(
+              find infra-repo/terraform/resource-group \
+                -type f \
+                \( -name "*.tf" -o -name "*.tfvars" \)
+            )
+
+          fi
+
+
+          echo ""
           echo "Changed files:"
+          echo "----------------------------"
           echo "$changed_files"
+          echo "----------------------------"
 
+
+          # Array containing changed Terraform components
           components=()
 
+
+          # ------------------------------------------------------
+          # Process each changed file
+          # ------------------------------------------------------
           while IFS= read -r file; do
 
+            # Ignore empty lines
+            [[ -z "$file" ]] && continue
+
+
+            # Ignore files outside Terraform root
             if [[ "$file" != infra-repo/terraform/resource-group/* ]]; then
               continue
             fi
 
+
             relative_path="${file#infra-repo/terraform/resource-group/}"
 
+
+            # --------------------------------------------------
+            # Terraform files directly under resource-group
+            #
+            # Example:
+            # resource-group/main.tf
+            # resource-group/providers.tf
+            # resource-group/backend.tf
+            #
+            # These belong to the resource-group Terraform root.
+            # --------------------------------------------------
+            if [[ "$relative_path" != */* ]]; then
+
+              case "$relative_path" in
+                *.tf|*.tfvars|*.tfvars.json)
+                  components+=("resource-group")
+                  ;;
+              esac
+
+              continue
+
+            fi
+
+
+            # --------------------------------------------------
+            # Extract first directory
+            #
+            # Example:
+            #
+            # vnet/main.tf
+            #      |
+            #      +-- vnet
+            # --------------------------------------------------
             component="${relative_path%%/*}"
 
+
+            # --------------------------------------------------
+            # Supported Terraform component roots
+            # --------------------------------------------------
             case "$component" in
-              vnet|subnet|vm|vmss|aks|keyvault)
-                components+=("$component")
+
+              vnet)
+                components+=("vnet")
                 ;;
+
+              subnet)
+                components+=("subnet")
+                ;;
+
+              vm)
+                components+=("vm")
+                ;;
+
+              vmss)
+                components+=("vmss")
+                ;;
+
+              aks)
+                components+=("aks")
+                ;;
+
+              keyvault)
+                components+=("keyvault")
+                ;;
+
               *)
                 echo "Ignoring unsupported Terraform path: $file"
                 ;;
+
             esac
 
           done <<< "$changed_files"
 
-          if [ ${#components[@]} -eq 0 ]; then
+
+          # ------------------------------------------------------
+          # If nothing changed
+          # ------------------------------------------------------
+          if [[ ${#components[@]} -eq 0 ]]; then
+
             echo 'components=[]' >> "$GITHUB_OUTPUT"
+
+            echo ""
             echo "No supported Terraform components changed."
+
             exit 0
+
           fi
 
+
+          # ------------------------------------------------------
+          # Remove duplicate components
+          # ------------------------------------------------------
           mapfile -t unique_components < <(
             printf '%s\n' "${components[@]}" |
             sort -u
           )
 
+
+          echo ""
+          echo "Detected components:"
+          printf '%s\n' "${unique_components[@]}"
+
+
+          # ------------------------------------------------------
+          # Convert components to JSON matrix
+          # ------------------------------------------------------
           components_json=$(
             printf '%s\n' "${unique_components[@]}" |
-            jq -R -s -c 'split("\n") | map(select(length > 0))'
+            jq -R -s -c '
+              split("\n")
+              | map(select(length > 0))
+              | map({
+                  component: .,
+                  working_directory:
+                    if . == "resource-group"
+                    then "infra-repo/terraform/resource-group"
+                    else ("infra-repo/terraform/resource-group/" + .)
+                    end
+                })
+            '
           )
 
-          echo "Changed components:"
+
+          echo ""
+          echo "Terraform matrix:"
           echo "$components_json"
 
+
+          # Send matrix to next job
           echo "components=$components_json" >> "$GITHUB_OUTPUT"
 
 
+  # ============================================================
+  # JOB 2: Run Terraform PLAN
+  # ============================================================
   terraform-plan:
+
     name: Terraform Plan - ${{ matrix.component }}
 
-    needs: detect-components
+    needs:
+      - detect-components
 
+    # Don't run if no Terraform component changed
     if: needs.detect-components.outputs.components != '[]'
 
     runs-on: ubuntu-latest
 
+
+    # Run each changed component independently
     strategy:
+
       fail-fast: false
 
       matrix:
         component: ${{ fromJSON(needs.detect-components.outputs.components) }}
 
+
+    # PLAN UAMI
     env:
       ARM_CLIENT_ID: ${{ vars.PLAN_CLIENT_ID }}
 
+
+    # Use the directory detected by the matrix
     defaults:
       run:
-        working-directory: infra-repo/terraform/resource-group/${{ matrix.component }}
- 
+        working-directory: ${{ matrix.component.working_directory }}
+
+
     steps:
 
+      # --------------------------------------------------------
+      # Checkout repository
+      # --------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
+
+      # --------------------------------------------------------
+      # Install Terraform
+      # --------------------------------------------------------
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
+
+      # --------------------------------------------------------
+      # Check Terraform formatting
+      # --------------------------------------------------------
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
 
+
+      # --------------------------------------------------------
+      # Initialize Terraform
+      # This also connects to the Azure Storage backend
+      # using Azure AD / OIDC authentication.
+      # --------------------------------------------------------
       - name: Terraform Init
         run: terraform init -input=false
 
+
+      # --------------------------------------------------------
+      # Validate Terraform configuration
+      # --------------------------------------------------------
       - name: Terraform Validate
         run: terraform validate
 
+
+      # --------------------------------------------------------
+      # Generate Terraform PLAN
+      # --------------------------------------------------------
       - name: Terraform Plan
         run: terraform plan -input=false
-                                                
