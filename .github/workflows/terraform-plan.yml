@@ -2,19 +2,17 @@ name: Terraform PLAN
 
 on:
 
-  # Run PLAN when a Pull Request changes Terraform code
+  # ============================================================
+  # Automatic PLAN for Pull Requests
+  # ============================================================
   pull_request:
     paths:
       - "infra-repo/terraform/resource-group/**"
 
-  # Run PLAN when Terraform code is pushed directly to main
-  push:
-    branches:
-      - main
-    paths:
-      - "infra-repo/terraform/resource-group/**"
-
-  # Allow manual execution from GitHub Actions
+  # ============================================================
+  # Manual PLAN
+  # GitHub Actions -> Terraform PLAN -> Run workflow
+  # ============================================================
   workflow_dispatch:
 
 
@@ -27,7 +25,7 @@ permissions:
 
 
 # ============================================================
-# Azure authentication configuration
+# Azure authentication
 # ============================================================
 env:
   ARM_USE_OIDC: true
@@ -37,7 +35,7 @@ env:
 
 
 # ============================================================
-# Cancel an older PLAN when a newer commit is available
+# Cancel older PLAN when a newer PLAN is started
 # ============================================================
 concurrency:
   group: terraform-plan-${{ github.event.pull_request.number || github.ref }}
@@ -47,7 +45,8 @@ concurrency:
 jobs:
 
   # ============================================================
-  # JOB 1: Detect changed Terraform components
+  # JOB 1
+  # Detect changed Terraform components
   # ============================================================
   detect-components:
 
@@ -62,7 +61,6 @@ jobs:
 
       # --------------------------------------------------------
       # Checkout repository
-      # Full history is required for git diff
       # --------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -86,7 +84,6 @@ jobs:
 
           # ======================================================
           # Pull Request
-          # Compare PR base commit with PR head commit
           # ======================================================
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
 
@@ -100,42 +97,10 @@ jobs:
 
 
           # ======================================================
-          # Push to main
-          # Compare previous commit with current commit
-          # ======================================================
-          elif [[ "${{ github.event_name }}" == "push" ]]; then
-
-            BASE_SHA="${{ github.event.before }}"
-            HEAD_SHA="${{ github.sha }}"
-
-            echo "Previous SHA: $BASE_SHA"
-            echo "Current SHA: $HEAD_SHA"
-
-
-            # ----------------------------------------------------
-            # Handle first commit
-            # ----------------------------------------------------
-            if [[ "$BASE_SHA" =~ ^0+$ ]]; then
-
-              echo "No previous commit available."
-              echo "Planning all Terraform components."
-
-              changed_files=$(
-                find infra-repo/terraform/resource-group \
-                  -type f \
-                  \( -name "*.tf" -o -name "*.tfvars" \)
-              )
-
-            else
-
-              changed_files=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-
-            fi
-
-
-          # ======================================================
           # Manual workflow execution
-          # Plan all Terraform components
+          #
+          # Since manual execution has no PR context,
+          # plan all Terraform components.
           # ======================================================
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
 
@@ -162,42 +127,35 @@ jobs:
 
 
           # ======================================================
-          # Array containing detected components
+          # Component array
           # ======================================================
           components=()
 
 
           # ======================================================
-          # Process every changed file
+          # Process changed files
           # ======================================================
           while IFS= read -r file; do
 
-            # Ignore empty lines
             [[ -z "$file" ]] && continue
 
 
-            # ----------------------------------------------------
             # Ignore files outside Terraform root
-            # ----------------------------------------------------
             if [[ "$file" != infra-repo/terraform/resource-group/* ]]; then
               continue
             fi
 
 
-            # Remove Terraform root from file path
             relative_path="${file#infra-repo/terraform/resource-group/}"
 
 
             # ====================================================
-            # Terraform files directly under resource-group
+            # Root Terraform files
             #
             # Example:
-            #
             # resource-group/main.tf
-            # resource-group/backend.tf
             # resource-group/providers.tf
-            #
-            # These belong to the resource-group root.
+            # resource-group/backend.tf
             # ====================================================
             if [[ "$relative_path" != */* ]]; then
 
@@ -215,13 +173,7 @@ jobs:
 
 
             # ====================================================
-            # Extract first directory
-            #
-            # Example:
-            #
-            # vnet/main.tf
-            #
-            # component = vnet
+            # Extract component directory
             # ====================================================
             component="${relative_path%%/*}"
 
@@ -269,13 +221,12 @@ jobs:
 
 
           # ======================================================
-          # No supported components changed
+          # No supported components
           # ======================================================
           if [[ ${#components[@]} -eq 0 ]]; then
 
             echo 'components=[]' >> "$GITHUB_OUTPUT"
 
-            echo ""
             echo "No supported Terraform components changed."
 
             exit 0
@@ -292,16 +243,13 @@ jobs:
           )
 
 
-          # ======================================================
-          # Display detected components
-          # ======================================================
           echo ""
           echo "Detected components:"
           printf '%s\n' "${unique_components[@]}"
 
 
           # ======================================================
-          # Convert components into Terraform matrix JSON
+          # Create Terraform matrix
           # ======================================================
           components_json=$(
             printf '%s\n' "${unique_components[@]}" |
@@ -325,22 +273,18 @@ jobs:
           )
 
 
-          # ======================================================
-          # Display generated matrix
-          # ======================================================
           echo ""
           echo "Terraform matrix:"
           echo "$components_json"
 
 
-          # ======================================================
           # Send matrix to next job
-          # ======================================================
           echo "components=$components_json" >> "$GITHUB_OUTPUT"
 
 
   # ============================================================
-  # JOB 2: Terraform PLAN
+  # JOB 2
+  # Terraform PLAN
   # ============================================================
   terraform-plan:
 
@@ -349,14 +293,13 @@ jobs:
     needs:
       - detect-components
 
-    # Skip PLAN if no component changed
     if: needs.detect-components.outputs.components != '[]'
 
     runs-on: ubuntu-latest
 
 
     # ==========================================================
-    # Run each Terraform component independently
+    # Run components independently
     # ==========================================================
     strategy:
 
@@ -367,7 +310,7 @@ jobs:
 
 
     # ==========================================================
-    # PLAN UAMI
+    # PLAN Managed Identity
     # ==========================================================
     env:
       ARM_CLIENT_ID: ${{ vars.PLAN_CLIENT_ID }}
@@ -384,35 +327,35 @@ jobs:
     steps:
 
       # --------------------------------------------------------
-      # Checkout repository
+      # Checkout
       # --------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
 
       # --------------------------------------------------------
-      # Install Terraform
+      # Terraform
       # --------------------------------------------------------
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
 
       # --------------------------------------------------------
-      # Terraform formatting check
+      # Format check
       # --------------------------------------------------------
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
 
 
       # --------------------------------------------------------
-      # Terraform initialization
+      # Initialize Terraform
       # --------------------------------------------------------
       - name: Terraform Init
         run: terraform init -input=false
 
 
       # --------------------------------------------------------
-      # Terraform validation
+      # Validate Terraform
       # --------------------------------------------------------
       - name: Terraform Validate
         run: terraform validate
