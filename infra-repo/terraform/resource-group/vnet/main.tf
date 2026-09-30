@@ -17,3 +17,4 @@ resource "azurerm_virtual_network" "main" {
   tags                = local.tags
 }
 
+
