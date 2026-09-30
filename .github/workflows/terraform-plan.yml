@@ -3,8 +3,8 @@ name: Terraform PLAN
 on:
   pull_request:
     paths:
-      - "infra-repo/terraform/resource-group/**/*.tf"
-      - "infra-repo/terraform/resource-group/*.tf"
+      - "infra-repo/terraform/resource-group/**"
+
 permissions:
   id-token: write
   contents: read
@@ -16,39 +16,121 @@ env:
   ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
 jobs:
-  plan:
-    name: Terraform Plan
+
+  detect-components:
+    name: Detect Terraform Components
     runs-on: ubuntu-latest
+
+    outputs:
+      components: ${{ steps.detect.outputs.components }}
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed Terraform components
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          echo "Base SHA: $BASE_SHA"
+          echo "Head SHA: $HEAD_SHA"
+
+          changed_files=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+
+          echo "Changed files:"
+          echo "$changed_files"
+
+          components=()
+
+          while IFS= read -r file; do
+
+            if [[ "$file" != infra-repo/terraform/resource-group/* ]]; then
+              continue
+            fi
+
+            relative_path="${file#infra-repo/terraform/resource-group/}"
+
+            component="${relative_path%%/*}"
+
+            case "$component" in
+              vnet|subnet|vm|vmss|aks|keyvault)
+                components+=("$component")
+                ;;
+              *)
+                echo "Ignoring unsupported Terraform path: $file"
+                ;;
+            esac
+
+          done <<< "$changed_files"
+
+          if [ ${#components[@]} -eq 0 ]; then
+            echo 'components=[]' >> "$GITHUB_OUTPUT"
+            echo "No supported Terraform components changed."
+            exit 0
+          fi
+
+          mapfile -t unique_components < <(
+            printf '%s\n' "${components[@]}" |
+            sort -u
+          )
+
+          components_json=$(
+            printf '%s\n' "${unique_components[@]}" |
+            jq -R -s -c 'split("\n") | map(select(length > 0))'
+          )
+
+          echo "Changed components:"
+          echo "$components_json"
+
+          echo "components=$components_json" >> "$GITHUB_OUTPUT"
+
+
+  terraform-plan:
+    name: Terraform Plan - ${{ matrix.component }}
+
+    needs: detect-components
+
+    if: needs.detect-components.outputs.components != '[]'
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        component: ${{ fromJSON(needs.detect-components.outputs.components) }}
 
     env:
       ARM_CLIENT_ID: ${{ vars.PLAN_CLIENT_ID }}
 
     defaults:
       run:
-        working-directory: infra-repo/terraform/resource-group
+        working-directory: infra-repo/terraform/resource-group/${{ matrix.component }}
 
     steps:
 
-      # Checkout the repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Install Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      # Check Terraform formatting
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
 
-      # Initialize Terraform and connect to the existing Azure state
       - name: Terraform Init
         run: terraform init -input=false
 
-      # Validate Terraform configuration
       - name: Terraform Validate
         run: terraform validate
 
-      # Generate Terraform plan
       - name: Terraform Plan
         run: terraform plan -input=false
