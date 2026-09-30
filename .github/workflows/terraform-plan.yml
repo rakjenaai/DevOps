@@ -114,7 +114,7 @@ jobs:
     defaults:
       run:
         working-directory: infra-repo/terraform/resource-group/${{ matrix.component }}
-
+ 
     steps:
 
       - name: Checkout repository
