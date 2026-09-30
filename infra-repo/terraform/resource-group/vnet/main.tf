@@ -16,3 +16,4 @@ resource "azurerm_virtual_network" "main" {
   address_space       = local.address_space
   tags                = local.tags
 }
+
