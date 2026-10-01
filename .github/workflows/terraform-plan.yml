@@ -31,7 +31,7 @@ env:
 # ============================================================
 # Concurrency
 # Cancel an older PLAN when a newer commit is pushed
-# to the same Pull Request.
+# to the same Pull Request
 # ============================================================
 concurrency:
   group: terraform-plan-pr-${{ github.event.pull_request.number }}
@@ -333,5 +333,6 @@ jobs:
       # Terraform PLAN
       # --------------------------------------------------------
       - name: Terraform Plan
-        run: terraform plan -input=false 
-        
+        run: terraform plan -input=false
+        env:
+          TF_VAR_ssh_public_key: ${{ vars.SSH_PUBLIC_KEY }}
