@@ -51,5 +51,5 @@ resource "azurerm_linux_virtual_machine_scale_set" "main" {
     ManagedBy   = "Terraform"
     Project     = "dev-platform"
   }
-}         
- 
+}
+
