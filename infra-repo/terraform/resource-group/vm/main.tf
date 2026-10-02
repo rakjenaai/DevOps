@@ -1,62 +1,140 @@
-locals {
-  vm_name = "dev-platform-vm01"
-  tags = {
-    Environment = "dev"
-    ManagedBy   = "Terraform"
-    Project     = "dev-platform"
-  }
-}
-
-variable "ssh_public_key" {
-  description = "OpenSSH public key matching the private key used to access the VM."
-  type        = string
-}
-
+# Create the Network Interface Card for the VM
 resource "azurerm_network_interface" "main" {
-  name                = "${local.vm_name}-nic"
-  location            = data.azurerm_resource_group.existing.location
-  resource_group_name = data.azurerm_resource_group.existing.name
 
+  # NIC name
+  name = "docker-vm-01-nic"
+
+  # Azure region
+  location = "eastus"
+
+  # Resource group containing the NIC
+  resource_group_name = "rg-dev-platform"
+
+
+  # Configure the NIC IP settings
   ip_configuration {
-    name                          = "internal"
-    subnet_id                     = data.azurerm_subnet.app.id
+
+    # Name of the IP configuration
+    name = "internal"
+
+    # Attach NIC to our subnet
+    subnet_id = azurerm_subnet.main.id
+
+    # Let Azure automatically assign a private IP
     private_ip_address_allocation = "Dynamic"
+
+    # Attach the public IP created earlier
+    public_ip_address_id = azurerm_public_ip.main.id
   }
 
-  tags = local.tags
+
+  # Tags for the NIC
+  tags = {
+    # Environment classification
+    Environment = "dev"
+
+    # Terraform manages the resource
+    ManagedBy = "Terraform"
+
+    # Project identification
+    Project = "docker-compose-lab"
+  }
 }
 
+
+# Associate the NSG with the NIC
+resource "azurerm_network_interface_security_group_association" "main" {
+
+  # NIC that will receive the security rules
+  network_interface_id = azurerm_network_interface.main.id
+
+  # NSG containing SSH and HTTP rules
+  network_security_group_id = azurerm_network_security_group.main.id
+}
+
+
+# Create the Ubuntu Linux VM
 resource "azurerm_linux_virtual_machine" "main" {
-  name                            = local.vm_name
-  computer_name                   = local.vm_name
-  location                        = data.azurerm_resource_group.existing.location
-  resource_group_name             = data.azurerm_resource_group.existing.name
-  size                            = "Standard_B2s"
-  admin_username                  = "azureuser"
+
+  # VM name
+  name = "docker-vm-01"
+
+  # Resource group containing the VM
+  resource_group_name = "rg-dev-platform"
+
+  # Azure region
+  location = "eastus"
+
+  # VM size / compute capacity
+  size = "Standard_B2s"
+
+  # Linux administrator username
+  admin_username = "azureuser"
+
+  # NIC attached to the VM
+  network_interface_ids = [
+    azurerm_network_interface.main.id
+  ]
+
+  # Disable password-based SSH login
   disable_password_authentication = true
-  network_interface_ids           = [azurerm_network_interface.main.id]
 
+
+  # Configure SSH public-key authentication
   admin_ssh_key {
-    username   = "azureuser"
-    public_key = var.ssh_public_key
+
+    # Linux username associated with the key
+    username = "azureuser"
+
+    # Your SSH public key
+    public_key = "YOUR_SSH_PUBLIC_KEY_HERE"
   }
 
+
+  # Configure the VM operating-system disk
   os_disk {
-    name                 = "${local.vm_name}-osdisk"
-    caching              = "ReadWrite"
-    storage_account_type = "StandardSSD_LRS"
+
+    # Enable read/write caching
+    caching = "ReadWrite"
+
+    # Use standard locally redundant storage
+    storage_account_type = "Standard_LRS"
   }
 
+
+  # Select the Ubuntu image
   source_image_reference {
+
+    # Image publisher
     publisher = "Canonical"
-    offer     = "0001-com-ubuntu-server-jammy"
-    sku       = "22_04-lts-gen2"
-    version   = "latest"
+
+    # Ubuntu 24.04 offer
+    offer = "ubuntu-24_04-lts"
+
+    # Server SKU
+    sku = "server"
+
+    # Use the latest available version
+    version = "latest"
   }
 
-  identity {
-    type = "SystemAssigned"
-  }
 
-  tags = local.tags
+  # Run cloud-init when the VM is first created
+  custom_data = base64encode(
+    file("${path.module}/cloud-init.yaml")
+  )
+
+
+  # Resource tags
+  tags = {
+
+    # Environment classification
+    Environment = "dev"
+
+    # Terraform manages the VM
+    ManagedBy = "Terraform"
+
+    # Project identification
+    Project = "docker-compose-lab"
+  }
 }
