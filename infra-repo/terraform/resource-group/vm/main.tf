@@ -63,10 +63,10 @@ resource "azurerm_linux_virtual_machine" "main" {
   resource_group_name = "rg-dev-platform"
 
   # Azure region
-  location = "eastus"
+  location = "centralindia"
 
   # VM size / compute capacity
-  size = "Standard_B1s"
+  size = "Standard_B2s"
 
   # Linux administrator username
   admin_username = "azureuser"
