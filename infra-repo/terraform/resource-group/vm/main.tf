@@ -66,7 +66,7 @@ resource "azurerm_linux_virtual_machine" "main" {
   location = "eastus"
 
   # VM size / compute capacity
-  size = "Standard_B2s"
+  size = "Standard_B1s"
 
   # Linux administrator username
   admin_username = "azureuser"
