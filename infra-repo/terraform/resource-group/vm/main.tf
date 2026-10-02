@@ -87,9 +87,9 @@ resource "azurerm_linux_virtual_machine" "main" {
     username = "azureuser"
 
     # Your SSH public key
-    public_key = "YOUR_SSH_PUBLIC_KEY_HERE"
+    public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDPKusJpJ3oC8qLBpeLtqtZOMcrJ4K6t1VN3vRQqVa/L terraform-vmss"
   }
-
+ 
 
   # Configure the VM operating-system disk
   os_disk {

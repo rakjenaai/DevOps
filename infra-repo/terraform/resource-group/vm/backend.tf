@@ -4,7 +4,7 @@ terraform {
 
   # Define the providers used by this configuration
   required_providers {
-    azurerm {
+    azurerm = {
       # Azure Resource Manager provider
       source = "hashicorp/azurerm"
 
