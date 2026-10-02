@@ -1,0 +1,72 @@
+name: Terraform APPLY - VM
+
+on:
+  # Manual trigger only.
+  # APPLY should not happen automatically on every PR.
+  workflow_dispatch:
+
+# Required for GitHub OIDC authentication
+permissions:
+  id-token: write
+  contents: read
+
+# Common Azure/Terraform configuration
+env:
+  # Use GitHub OIDC authentication
+  ARM_USE_OIDC: true
+
+  # Use Microsoft Entra ID authentication
+  ARM_USE_AZUREAD: true
+
+  # Azure tenant
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+
+  # Azure subscription
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+  # APPLY User Assigned Managed Identity
+  ARM_CLIENT_ID: ${{ vars.APPLY_CLIENT_ID }}
+
+jobs:
+
+  terraform-apply:
+
+    # Job name shown in GitHub Actions
+    name: Terraform APPLY - VM
+
+    # GitHub-hosted runner
+    runs-on: ubuntu-latest
+
+    # All Terraform commands run from the VM directory
+    defaults:
+      run:
+        working-directory: infra-repo/terraform/resource-group/vm
+
+    steps:
+
+      # Checkout the repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Install Terraform
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      # Check Terraform formatting
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      # Initialize Terraform
+      - name: Terraform Init
+        run: terraform init -input=false
+
+      # Validate Terraform configuration
+      - name: Terraform Validate
+        run: terraform validate
+
+      # Apply Terraform configuration
+      - name: Terraform Apply
+        run: terraform apply -input=false -auto-approve
+        env:
+          # SSH public key required by the VM
+          TF_VAR_ssh_public_key: ${{ vars.SSH_PUBLIC_KEY }}
