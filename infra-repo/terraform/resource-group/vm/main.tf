@@ -1,11 +1,11 @@
 # Create the Network Interface Card for the VM
 resource "azurerm_network_interface" "main" {
 
-  # NIC name
+  ## NIC name
   name = "docker-vm-01-nic"
 
   # Azure region
-  location = "eastus"
+  location = "centralindia"
 
   # Resource group containing the NIC
   resource_group_name = "rg-dev-platform"

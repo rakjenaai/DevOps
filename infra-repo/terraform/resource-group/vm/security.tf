@@ -5,7 +5,7 @@ resource "azurerm_network_security_group" "main" {
   name = "docker-vm-01-nsg"
 
   # Azure region
-  location = "eastus"
+  location = "centralindia"
 
   # Resource group containing the NSG
   resource_group_name = "rg-dev-platform"
@@ -94,7 +94,7 @@ resource "azurerm_public_ip" "main" {
   name = "docker-vm-01-pip"
 
   # Azure region
-  location = "eastus"
+  location = "centralindia"
 
   # Resource group containing the public IP
   resource_group_name = "rg-dev-platform"
