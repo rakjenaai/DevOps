@@ -8,4 +8,4 @@ resource "azurerm_resource_group" "main" {
     Project     = "dev-platform"
   }
 }
-#
+################
