@@ -5,7 +5,7 @@ resource "azurerm_virtual_network" "main" {
   name = "docker-vm-01-vnet"
 
   # Azure region where the VNet will be created
-  location = "eastus"
+  location = "centralindia"
 
   # Resource group where the VNet will live
   resource_group_name = "rg-dev-platform"
