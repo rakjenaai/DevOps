@@ -1,19 +1,22 @@
-output "id" {
-  description = "Resource ID of the virtual machine."
-  value       = azurerm_linux_virtual_machine.main.id
+# Display the VM name after Terraform completes
+output "vm_name" {
+
+  # Get the VM name from the VM resource
+  value = azurerm_linux_virtual_machine.main.name
 }
 
-output "name" {
-  description = "Name of the virtual machine."
-  value       = azurerm_linux_virtual_machine.main.name
+
+# Display the public IP address
+output "public_ip_address" {
+
+  # Get the IP address from the Public IP resource
+  value = azurerm_public_ip.main.ip_address
 }
 
-output "private_ip_address" {
-  description = "Private IP assigned to the VM network interface."
-  value       = azurerm_network_interface.main.private_ip_address
-}
 
-output "identity_principal_id" {
-  description = "Principal ID of the VM system-assigned managed identity."
-  value       = azurerm_linux_virtual_machine.main.identity[0].principal_id
+# Display an SSH command for connecting to the VM
+output "ssh_command" {
+
+  # Build the SSH command using the generated public IP
+  value = "ssh azureuser@${azurerm_public_ip.main.ip_address}"
 }
