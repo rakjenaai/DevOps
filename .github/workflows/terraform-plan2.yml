@@ -16,6 +16,10 @@ env:
   ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
   ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
+concurrency:
+  group: terraform-plan2-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
 
   plan:
@@ -48,6 +52,3 @@ jobs:
 
       - name: Terraform Plan
         run: terraform plan -input=false
-
-      
-
