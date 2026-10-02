@@ -1,0 +1,50 @@
+name: Terraform PLAN 2
+
+on:
+  pull_request:
+    paths:
+      - "infra-repo/terraform/resource-group/**/*.tf"
+      - "infra-repo/terraform/resource-group/*.tf"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ARM_USE_OIDC: true
+  ARM_USE_AZUREAD: true
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+jobs:
+
+  plan:
+    name: Terraform Plan - Resource Group
+    runs-on: ubuntu-latest
+
+    env:
+      ARM_CLIENT_ID: ${{ vars.PLAN_CLIENT_ID2 }}
+
+    defaults:
+      run:
+        working-directory: infra-repo/terraform/resource-group
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Init
+        run: terraform init -input=false
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: terraform plan -input=false
